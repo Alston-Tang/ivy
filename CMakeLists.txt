@@ -1,0 +1,43 @@
+cmake_minimum_required(VERSION 3.6)
+project(ivy)
+set(CMAKE_CXX_STANDARD 14)
+
+find_package(glog 0.3.5 REQUIRED)
+
+link_directories(/usr/local/lib)
+
+set(IVY_MASTER_KEY "default key has a length of 32b" CACHE STRING "Define you master key here")
+add_definitions(-DIVY_MASTER_KEY="${IVY_MASTER_KEY}")
+
+set(IVY_SERVER_PORT "1973" CACHE STRING "Server port")
+add_definitions(-DIVY_SERVER_PORT=${IVY_SERVER_PORT})
+
+set(IVY_SERVER_LOGGER_PATH "./logs" CACHE STRING "Server logging path")
+add_definitions(-DIVY_SERVER_LOGGER_PATH="${IVY_SERVER_LOGGER_PATH}")
+add_library(compact_logger server/compact_logger.cpp server/compact_logger.h)
+target_link_libraries(compact_logger glogd)
+
+add_library(crypto crypto.cpp crypto.h)
+target_link_libraries(crypto cryptopp)
+
+add_executable(server server/main.cpp protocol.h server/packet_handler.cpp server/packet_handler.h)
+target_link_libraries(server glogd crypto)
+
+set(CXXTEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cxxtest)
+set(CXXTEST_PYTHON_TESTGEN_EXECUTABLE ${CMAKE_CURRENT_SOURCE_DIR}/cxxtest/bin/cxxtestgen)
+find_package(CxxTest)
+if (CXXTEST_FOUND)
+    # Add logs for test_compact_logger
+    add_custom_target(build-time-make-directory ALL COMMAND ${CMAKE_COMMAND} -E make_directory logs)
+
+    include_directories(${CXXTEST_INCLUDE_DIR})
+    enable_testing()
+
+    CXXTEST_ADD_TEST(test_crypto test_crypto.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/test_crypto.cpp)
+    target_link_libraries(test_crypto crypto)
+
+    CXXTEST_ADD_TEST(test_protocol test_protocol.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/test_protocol.cpp)
+
+    CXXTEST_ADD_TEST(test_compact_logger test_compact_logger.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/test_compact_logger.cpp)
+    target_link_libraries(test_compact_logger compact_logger)
+endif ()
