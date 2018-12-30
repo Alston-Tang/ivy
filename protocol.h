@@ -1,0 +1,8 @@
+//
+// Created by Tang on 12/20/2018.
+//
+
+#ifndef SIMPLE_EXAMPLE_PROTOCOL_H
+#define SIMPLE_EXAMPLE_PROTOCOL_H
+
+#endif //SIMPLE_EXAMPLE_PROTOCOL_H

@@ -1,0 +1,6 @@
+[submodule "cryptopp"]
+	path = cryptopp
+	url = https://github.com/weidai11/cryptopp
+[submodule "cxxtest"]
+	path = cxxtest
+	url = https://github.com/CxxTest/cxxtest
