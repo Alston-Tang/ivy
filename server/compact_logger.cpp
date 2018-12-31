@@ -11,17 +11,19 @@
 #include <sys/stat.h>
 #include <chrono>
 #include <string>
+#include <iostream>
 
 namespace ivy {
 
-const static int MODE_777 = S_IRWXU | S_IRWXG | S_IRWXO;
+const static int FILE_MODE = ((mode_t) 0600);
+const static int DIRECTORY_MODE = ((mode_t) 0700);
 // Do not change this if some logging files has already been generated
 // 4MB
 const static size_t FILE_LENGTH = 4 * 1024 * 1024;
 static unsigned int ZERO = 0;
 
 bool CompactLogger::is_initialized() {
-    return *len > 0 && map_begin && map_end && cur_ptr && fd > 0;
+    return len && map_begin && map_end && cur_ptr;
 }
 
 bool CompactLogger::log(char *msg, size_t msg_len) {
@@ -42,13 +44,15 @@ bool CompactLogger::log(char *msg, size_t msg_len) {
     }
 
     memcpy(cur_ptr, msg, msg_len);
-    cur_ptr = (uint8_t*)cur_ptr + msg_len;
+    cur_ptr = (uint8_t *) cur_ptr + msg_len;
     *len += msg_len;
 
     sync();
+    return true;
 }
 
 CompactLogger::CompactLogger(std::string logger_name_, long latest_start_time_, std::string logging_path) {
+    LOG(INFO) << "Initilize logger " << logger_name_;
     logger_name = std::move(logger_name_);
     category_path = logging_path + "/" + logger_name;
 
@@ -56,7 +60,6 @@ CompactLogger::CompactLogger(std::string logger_name_, long latest_start_time_, 
     map_begin = nullptr;
     map_end = nullptr;
     cur_ptr = nullptr;
-    fd = -1;
 
     int rv;
 
@@ -66,13 +69,12 @@ CompactLogger::CompactLogger(std::string logger_name_, long latest_start_time_, 
             LOG(ERROR) << "Cannot create a new logging file.";
             clean();
         }
-
         return;
     }
 
     latest_start_time = latest_start_time_;
     std::string logging_file_name = category_path + "/" + "ivy_" + std::to_string(latest_start_time);
-    fd = open(logging_file_name.c_str(), O_RDWR, MODE_777);
+    int fd = open(logging_file_name.c_str(), O_RDWR, FILE_MODE);
 
     if (fd == -1) {
         LOG(ERROR) << "Cannot open logging file. This is an error.";
@@ -81,39 +83,33 @@ CompactLogger::CompactLogger(std::string logger_name_, long latest_start_time_, 
     }
 
     LOG(INFO) << "Load file into memory.";
-    map_begin = mmap(nullptr, FILE_LENGTH, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    map_begin = mmap(nullptr, FILE_LENGTH, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map_begin == MAP_FAILED) {
         LOG(ERROR) << "Cannot map file to memory.";
         perror("Error: mmap");
         map_begin = nullptr;
         map_end = nullptr;
-        goto clean_file;
+        close(fd);
+        return;
     }
-    map_end = (uint8_t*)map_begin + FILE_LENGTH;
+    map_end = (uint8_t *) map_begin + FILE_LENGTH;
 
     // Read length. Length is a 4 byte unsigned integer at the first 4 byte of the file
-    len = (unsigned int*)map_begin;
+    len = (unsigned int *) map_begin;
     // Sanity check
     if (*len > FILE_LENGTH - 4) {
         LOG(ERROR) << "Bad file length field.";
-        goto clean_map;
+        clean();
+        return;
     }
     // Move cur_ptr
-    cur_ptr = (uint8_t*)map_begin + 4 + *len;
-    return;
+    cur_ptr = (uint8_t *) map_begin + 4 + *len;
+    LOG(INFO) << "Finish initialization of logger " << logger_name;
+}
 
-    // Error handling below
-    clean_map:
-    munmap(map_begin, FILE_LENGTH);
-    map_begin = nullptr;
-    map_end = nullptr;
-
-    clean_file:
-    close(fd);
-    fd = -1;
-
-    cur_ptr = nullptr;
-    len = &ZERO;
+CompactLogger::~CompactLogger() {
+    LOG(INFO) << "Logger " << logger_name << " will be destroyed.";
+    clean();
 }
 
 int CompactLogger::get_size() {
@@ -123,59 +119,65 @@ int CompactLogger::get_size() {
 bool CompactLogger::set_new_map() {
     clean();
 
-    LOG(INFO) << "Create a new file.";
+
+    int rv;
     auto time_now = std::chrono::steady_clock::now();
     auto time_stamp_now = time_now.time_since_epoch();
     auto time_now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_stamp_now);
 
     latest_start_time = time_now_ms.count();
     std::string logging_file_name = category_path + "/" + "ivy_" + std::to_string(latest_start_time);
-    fd = open(logging_file_name.c_str(), O_RDWR | O_CREAT, MODE_777);
+    LOG(INFO) << "Create a new file " << logging_file_name << ".";
+    int fd = open(logging_file_name.c_str(), O_RDWR | O_CREAT, FILE_MODE);
 
     if (fd == -1) {
         LOG(ERROR) << "Cannot open logging file. This is an error.";
         perror("Error: open");
-        goto error_return;
+        clean();
+        return false;
+    }
+
+    LOG(INFO) << "Resize file to " << FILE_LENGTH << ".";
+    rv = posix_fallocate(fd, 0, FILE_LENGTH);
+    if (rv != 0) {
+        LOG(ERROR) << "Cannot resize file to " << FILE_LENGTH << ".";
+        perror("Error: posix_fallocate");
+        clean();
+        return false;
     }
 
     LOG(INFO) << "Load file into memory.";
-    map_begin = mmap(nullptr, FILE_LENGTH, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    map_begin = mmap(nullptr, FILE_LENGTH, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map_begin == MAP_FAILED) {
         LOG(ERROR) << "Cannot map file to memory.";
         perror("Error: mmap");
         map_begin = nullptr;
         map_end = nullptr;
-        goto clean_file;
+        clean();
+        return false;
     }
-    map_end = (uint8_t*)map_begin + FILE_LENGTH;
+    map_end = (uint8_t *) map_begin + FILE_LENGTH;
+
+    // It is good to close file after mmap
+    rv = close(fd);
+    if (rv != 0) {
+        LOG(WARNING) << "Cannot close file after successfully map file to memory.";
+        perror("Error: close");
+    }
 
     // Read length. Length is a 4 byte unsigned integer at the first 4 byte of the file
-    len = (unsigned int*)map_begin;
+    len = (unsigned int *) map_begin;
     *len = 0;
     // Sanity check
     if (*len > FILE_LENGTH - 4) {
         LOG(ERROR) << "Bad file length field.";
-        goto clean_map;
+        clean();
+        return false;
     }
     // Move cur_ptr
-    cur_ptr = (uint8_t*)map_begin + 4 + *len;
+    cur_ptr = (uint8_t *) map_begin + 4 + *len;
 
     return true;
-
-    // Error handling below
-    clean_map:
-    munmap(map_begin, FILE_LENGTH);
-    map_begin = nullptr;
-    map_end = nullptr;
-
-    clean_file:
-    close(fd);
-    fd = -1;
-
-    error_return:
-    cur_ptr = nullptr;
-    len = &ZERO;
-    return false;
 }
 
 bool CompactLogger::roll() {
@@ -197,20 +199,12 @@ void CompactLogger::clean() {
         map_begin = nullptr;
         map_end = nullptr;
     }
-    if (fd) {
-        rv = close(fd);
-        if (rv >= 0) {
-            LOG(WARNING) << "Cannot close file.";
-            perror("Error: close");
-        }
-        fd = -1;
-    }
     cur_ptr = nullptr;
     len = &ZERO;
 }
 
 bool CompactLogger::shouldSync() {
-    return true;
+    return is_initialized();
 }
 
 void CompactLogger::sync() {
@@ -220,13 +214,12 @@ void CompactLogger::sync() {
     if (rv != 0) {
         LOG(WARNING) << "Cannot sync memory back to file.";
         perror("Error: msync");
-    }
-    else {
+    } else {
         LOG(INFO) << "Sync memory with file.";
     }
 }
 
-CompactLoggerManager& CompactLoggerManager::get_instance() {
+CompactLoggerManager &CompactLoggerManager::get_instance() {
     static CompactLoggerManager instance;
     return instance;
 }
@@ -242,11 +235,11 @@ std::shared_ptr<CompactLogger> CompactLoggerManager::get_logger(std::string logg
     std::string category_path = std::string() + logging_path + "/" + logger_name;
     DIR *category_dir = opendir(category_path.c_str());
     if (category_dir == nullptr) {
-        LOG(INFO) << "Cannot open category directory. So try to create one.";
-        rv = mkdir(category_path.c_str(), MODE_777); // NOLINT
+        LOG(INFO) << "Cannot open category directory at " << category_path << ". So try to create one.";
+        rv = mkdir(category_path.c_str(), DIRECTORY_MODE); // NOLINT
 
         if (rv != 0) {
-            LOG(ERROR) << "Cannot create directory.";
+            LOG(ERROR) << "Cannot create directory at " << category_path << ".";
             return nullptr;
         }
 
@@ -276,13 +269,25 @@ std::shared_ptr<CompactLogger> CompactLoggerManager::get_logger(std::string logg
 
         latest_start_time = std::max(latest_start_time, logging_start_time);
     }
-    auto ins = new CompactLogger(logger_name, latest_start_time, std::move(logging_path));
+    auto ins = new CompactLogger(logger_name, latest_start_time, logging_path);
     std::shared_ptr<CompactLogger> instance(ins, CompactLoggerDeleter());
     if (!instance->is_initialized()) {
+        LOG(ERROR) << "Loger is not initialized.";
         return nullptr;
     }
 
-    loggers[logger_name] = std::move(instance);
+    loggers[logger_name] = instance;
+    return instance;
+}
+
+bool CompactLoggerManager::close_logger(std::string logger_name) {
+    LOG(INFO) << "Will close logger " << logger_name << ".";
+    auto it = loggers.find(logger_name);
+    if (it == loggers.end()) {
+        return false;
+    }
+    loggers.erase(it);
+    return true;
 }
 
 CompactLoggerManager::CompactLoggerManager() {
