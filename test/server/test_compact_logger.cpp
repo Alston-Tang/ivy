@@ -8,7 +8,7 @@
 
 #include <iostream>
 
-#include "../server/compact_logger.h"
+#include "../../server/compact_logger.h"
 
 using namespace ivy;
 

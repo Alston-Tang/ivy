@@ -41,11 +41,13 @@ if (CXXTEST_FOUND)
 
     CXXTEST_ADD_TEST(test_protocol test_protocol.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/test_protocol.cpp)
 
-    CXXTEST_ADD_TEST(test_compact_logger test_compact_logger.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/test_compact_logger.cpp)
+    CXXTEST_ADD_TEST(test_compact_logger test_compact_logger.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/server/test_compact_logger.cpp)
     target_link_libraries(test_compact_logger compact_logger)
     add_custom_command(
             TARGET test_compact_logger POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy
             ${CMAKE_SOURCE_DIR}/test/pre_logger_test.sh
             ${CMAKE_CURRENT_BINARY_DIR}/pre_logger_test.sh)
+
+    CXXTEST_ADD_TEST(test_util test_util.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/controller/test_util.cpp)
 endif ()
