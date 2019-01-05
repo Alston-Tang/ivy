@@ -16,7 +16,7 @@ class TestCompactLogger : public CxxTest::TestSuite {
 public:
     void test_clean_log() {
         // Delete previous logger test
-        int rv = system("./pre_logger_test.sh");
+        int rv = system("rm -rf ./logs/*");
         TS_ASSERT(rv == 0);
 
         auto &logger_manager = CompactLoggerManager::get_instance();
