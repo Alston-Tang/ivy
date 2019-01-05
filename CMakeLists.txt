@@ -21,6 +21,13 @@ target_link_libraries(crypto cryptopp)
 add_executable(server server/main.cpp protocol.h server/packet_handler.cpp server/packet_handler.h server/logging_formats.h server/logging_util.h)
 target_link_libraries(server glog crypto compact_logger)
 
+add_executable(controller controller/main.cpp)
+target_link_libraries(controller atomic)
+
+add_library(receiver controller/receiver.cpp controller/receiver.h)
+
+add_library(messages controller/messages/raw.cpp controller/messages/raw.h controller/util.h)
+
 find_package(CxxTest)
 if (CXXTEST_FOUND)
     # Add logs for test_compact_logger

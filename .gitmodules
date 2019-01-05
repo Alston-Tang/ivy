@@ -4,3 +4,6 @@
 [submodule "cxxtest"]
 	path = cxxtest
 	url = https://github.com/CxxTest/cxxtest
+[submodule "concurrentqueue"]
+	path = concurrentqueue
+	url = https://github.com/cameron314/concurrentqueue
