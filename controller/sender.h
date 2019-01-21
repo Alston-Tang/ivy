@@ -16,7 +16,7 @@ class Sender {
 public:
     explicit Sender(
             std::shared_ptr<RawMessageQueue> up_queue,
-            std::shared_ptr<PeerSyncQueue> peer_recv_queue,
+            std::shared_ptr<PeerSyncQueue> peer_recv_queue = nullptr,
             std::shared_ptr<PeerSyncQueue> peer_send_queue = nullptr);
 
     bool run();
@@ -39,6 +39,10 @@ private:
     void handle_close(ivy::message::Raw &message);
 
     void handle_send(ivy::message::Raw &message);
+
+    void handle_tcp_send(ivy::message::Raw &message);
+
+    void handle_udp_send(ivy::message::Raw &message);
 };
 
 

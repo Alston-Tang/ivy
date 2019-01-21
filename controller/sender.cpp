@@ -5,6 +5,8 @@
 #include "sender.h"
 
 #include <glog/logging.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include "util.h"
 
 namespace ivy {
@@ -13,8 +15,8 @@ namespace ivy {
 Sender::Sender(std::shared_ptr<ivy::RawMessageQueue> up_queue,
                std::shared_ptr<ivy::PeerSyncQueue> peer_recv_queue,
                std::shared_ptr<ivy::PeerSyncQueue> peer_send_queue) {
-    if (!up_queue || !peer_recv_queue) {
-        LOG(FATAL) << "up_queue or peer_recv_queue cannot be null";
+    if (!up_queue) {
+        LOG(FATAL) << "up_queue cannot be null";
         return;
     }
     this->up_queue = std::move(up_queue);
@@ -83,12 +85,6 @@ void Sender::main_loop() {
             continue;
         }
 
-        // Find an arbitrary fd if multiple fd connected to target id exists
-        if (!connections.count(message.id) || connections[message.id].empty()) {
-            LOG(ERROR) << "No connection to " << id_to_printable(message.id) << " has established. Drop message";
-            continue;
-        }
-
         if (message.length > 0) {
             handle_send(message);
         } else if (message.length == 0) {
@@ -127,11 +123,73 @@ void Sender::handle_close(ivy::message::Raw &message) {
 }
 
 void Sender::handle_send(ivy::message::Raw &message) {
+    switch (get_type(message.id)) {
+        case SOCK_STREAM:
+            return handle_tcp_send(message);
+        case SOCK_DGRAM:
+            return handle_udp_send(message);
+        default:
+            LOG(ERROR) << "Unsupported network type";
+            return;
+    }
+}
+
+void Sender::handle_tcp_send(ivy::message::Raw &message) {
+    ssize_t byte_sent;
+    int rv;
+    if (!connections.count(message.id) || connections[message.id].empty()) {
+        int new_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (new_fd == -1) {
+            LOG(ERROR) << "Cannot create new tcp socket. Ignore sending to " << id_to_printable(message.id);
+            perror("Error: socket");
+            return;
+        }
+        sockaddr_in new_addr = id_to_sockaddr_in(message.id);
+        rv = connect(new_fd, (sockaddr *) &new_addr, sizeof(new_addr));
+        if (rv != 0) {
+            LOG(WARNING) << "Cannot connect to " << id_to_printable(message.id);
+            perror("Error: connect");
+            close(new_fd);
+            return;
+        }
+
+        connections[message.id].insert(new_fd);
+    }
+
     int outgoing_fd = *connections[message.id].begin();
-    ssize_t byte_sent = send(outgoing_fd, message.data.get(), message.length, 0);
+    byte_sent = send(outgoing_fd, message.data.get(), message.length, 0);
     if (byte_sent < 0) {
         LOG(ERROR) << "Cannot send message to " << id_to_printable(message.id) << " with fd " << outgoing_fd;
         perror("Error: send");
+        return;
+    }
+    if (byte_sent < message.length) {
+        // TODO? Probably should handle partial sent case
+        LOG(ERROR) << "Only partial data has been sent";
+        return;
+    }
+};
+
+void Sender::handle_udp_send(ivy::message::Raw &message) {
+    ssize_t byte_sent;
+    int rv;
+    if (!connections.count(message.id) || connections[message.id].empty()) {
+        int new_fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (new_fd == -1) {
+            LOG(ERROR) << "Cannot create new udp socket. Ignore sending to " << id_to_printable(message.id);
+            perror("Error: socket");
+            return;
+        }
+        connections[message.id].insert(new_fd);
+    }
+
+    int outgoing_fd = *connections[message.id].begin();
+    auto addr = id_to_sockaddr_in(message.id);
+    byte_sent = sendto(outgoing_fd, message.data.get(), message.length, 0, (sockaddr*)&addr, sizeof(addr));
+
+    if (byte_sent < 0) {
+        LOG(ERROR) << "Cannot send message to " << id_to_printable(message.id) << " with fd " << outgoing_fd;
+        perror("Error: sendto");
         return;
     }
     if (byte_sent < message.length) {

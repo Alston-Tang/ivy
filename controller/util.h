@@ -39,6 +39,9 @@ inline static uint32_t get_addr(uint64_t id) {
     return (uint32_t)((id & ADDR_MASK) >> ADDR_OFFSET);
 }
 
+// type: SOCK_STREAM/SOCK_DGRAM
+// proto: AF_INET
+
 inline uint64_t tuple_to_id(sockaddr_in &addr, uint8_t proto, uint8_t type) {
     return (
             (uint64_t)proto << 56
@@ -52,6 +55,15 @@ inline static std::string id_to_ip_str(uint64_t id) {
     addr.s_addr = htonl(get_addr(id));
 
     return std::string(inet_ntoa(addr));
+}
+
+inline static sockaddr_in id_to_sockaddr_in(uint64_t id) {
+    sockaddr_in addr = {};
+    addr.sin_family = get_proto(id);
+    addr.sin_port = htons(get_port(id));
+    addr.sin_addr.s_addr = htonl(get_addr(id));
+
+    return addr;
 }
 
 inline static std::string id_to_printable(uint64_t id) {
