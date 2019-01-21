@@ -30,7 +30,9 @@ target_link_libraries(server ${GLOG} crypto compact_logger)
 add_executable(controller controller/main.cpp)
 target_link_libraries(controller atomic)
 
-add_library(receiver controller/receiver.cpp controller/receiver.h)
+add_library(receiver controller/receiver.cpp controller/receiver.h controller/controller.h)
+
+add_library(sender controller/sender.cpp controller/sender.h controller/controller.h)
 
 add_library(messages controller/messages/raw.cpp controller/messages/raw.h controller/util.h)
 

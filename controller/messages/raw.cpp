@@ -14,14 +14,15 @@ struct array_deleter
 {
     void operator ()( T const * p)
     {
-        delete[] p;
+        if (!p) delete[] p;
     }
 };
 
 
-Raw::Raw(uint8_t *data) {
+Raw::Raw(uint8_t *data, uint64_t id) {
     this->data = std::shared_ptr<uint8_t>(data, array_deleter<uint8_t>());
     this->length = 0;
+    this->id = id;
 }
 
 }

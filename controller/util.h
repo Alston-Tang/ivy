@@ -7,10 +7,11 @@
 
 #include <stdint-gcc.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 namespace ivy {
 
-const static uint64_t TCP_LISTEN_ID = 0;
+const static uint64_t TCP_LISTEN_ID = 1;
 
 const static uint64_t PROTO_MASK = 0xFF00000000000000;
 const static uint64_t TYPE_MASK  = 0x00FF000000000000;
@@ -38,8 +39,6 @@ inline static uint32_t get_addr(uint64_t id) {
     return (uint32_t)((id & ADDR_MASK) >> ADDR_OFFSET);
 }
 
-
-
 inline uint64_t tuple_to_id(sockaddr_in &addr, uint8_t proto, uint8_t type) {
     return (
             (uint64_t)proto << 56
@@ -53,6 +52,10 @@ inline static std::string id_to_ip_str(uint64_t id) {
     addr.s_addr = htonl(get_addr(id));
 
     return std::string(inet_ntoa(addr));
+}
+
+inline static std::string id_to_printable(uint64_t id) {
+    return id_to_ip_str(id) + ":" + std::to_string(get_port(id));
 }
 
 }

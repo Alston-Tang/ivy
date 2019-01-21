@@ -37,9 +37,11 @@ int set_socket_non_blocking(int fd) {
     }
     return rv;
 }
+}
 
-void handle_accept(int tcp_listen_fd, int epoll_fd, std::unordered_map<int, uint64_t> &fd_map) {
+void Receiver::handle_accept(int tcp_listen_fd, int epoll_fd) {
     int rv;
+    bool res;
     sockaddr_in incoming_addr{};
     socklen_t incoming_addr_len = sizeof(incoming_addr);
 
@@ -65,7 +67,7 @@ void handle_accept(int tcp_listen_fd, int epoll_fd, std::unordered_map<int, uint
         }
 
         uint64_t incoming_id = tuple_to_id(incoming_addr, AF_INET, SOCK_STREAM);
-        fd_map[incoming_fd] = incoming_id;
+        connections[incoming_fd] = incoming_id;
 
         epoll_event new_event{};
         new_event.events = EPOLLIN;
@@ -83,17 +85,28 @@ void handle_accept(int tcp_listen_fd, int epoll_fd, std::unordered_map<int, uint
             continue;
         }
 
+        if (peer_send_queue) {
+            ConnectionTrait trait = {};
+            trait.action = ConnectionAction::ESTABLISH;
+            trait.id = incoming_id;
+            trait.fd = incoming_fd;
+            res = peer_send_queue->try_enqueue(trait);
+            if (!res) {
+                LOG(WARNING) << "Cannot enqueue trait to peer_send_queue";
+            }
+        }
+
         LOG(INFO) << "New connection from " << inet_ntoa(incoming_addr.sin_addr) << ":" << ntohs(incoming_addr.sin_port)
                   << ". Assigned ID: " << incoming_id;
     }
 }
 
-void handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_fd, std::unordered_map<int, uint64_t> &fd_map,
-                    std::shared_ptr<RawMessageQueue> &up_queue) {
+void Receiver::handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_fd) {
     int rv;
+    bool res;
 
     while (true) {
-        ivy::message::Raw message(new uint8_t[Receiver::RECV_BUFFER_LEN]);
+        ivy::message::Raw message(new uint8_t[Receiver::RECV_BUFFER_LEN], 0);
 
         ssize_t received = recv(incoming_fd, message.data.get(), Receiver::RECV_BUFFER_LEN, 0);
         if (received < 0) {
@@ -113,16 +126,27 @@ void handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_fd, std::un
                            << " ip: " << id_to_ip_str(incoming_id)
                            << " port: " << get_port(incoming_id);
             }
-            unsigned long erased = fd_map.erase(incoming_fd);
+            if (peer_send_queue) {
+                ConnectionTrait trait = {};
+                trait.action = ConnectionAction::CLOSE;
+                trait.fd = incoming_fd;
+                trait.id = connections[incoming_fd];
+                res = peer_send_queue->try_enqueue(trait);
+                if (!res) {
+                    LOG(WARNING) << "Cannot enqueue trait to peer_send_queue";
+                }
+            }
+            unsigned long erased = connections.erase(incoming_fd);
             if (erased != 1) {
-                LOG(WARNING) << "Cannot erase closed tcp connection from fd_map";
+                LOG(WARNING) << "Cannot erase closed tcp connection from connections";
             }
             LOG(INFO) << "Connection to " << id_to_ip_str(incoming_id) << ":" << get_port(incoming_id) << " close";
             return;
         }
 
         message.length = (unsigned int) received;
-        bool res = up_queue->enqueue(message);
+        message.id = incoming_id;
+        res = up_queue->enqueue(message);
         if (!res) {
             LOG(FATAL) << "Cannot enqueue message into shared queue";
         }
@@ -131,10 +155,17 @@ void handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_fd, std::un
     }
 }
 
-}
-
-Receiver::Receiver(std::shared_ptr<RawMessageQueue> up_queue, uint16_t port) {
+Receiver::Receiver(std::shared_ptr<RawMessageQueue> up_queue,
+                   uint16_t port,
+                   std::shared_ptr<PeerSyncQueue> peer_recv_queue,
+                   std::shared_ptr<PeerSyncQueue> peer_send_queue) {
+    if (!up_queue) {
+        LOG(FATAL) << "up_queue cannot be null";
+        return;
+    }
     this->up_queue = std::move(up_queue);
+    this->peer_recv_queue = std::move(peer_recv_queue);
+    this->peer_send_queue = std::move(peer_send_queue);
     this->should_stop = true;
     this->thread = nullptr;
     this->port = port;
@@ -179,7 +210,6 @@ bool Receiver::stop() {
 
 void Receiver::main_loop() {
     int rv;
-    std::unordered_map<int, uint64_t> fd_map;
 
     LOG(INFO) << "Receiver thread is initializing";
 
@@ -235,12 +265,18 @@ void Receiver::main_loop() {
         return;
     }
 
-    fd_map[tcp_listen_fd] = TCP_LISTEN_ID;
+    connections[tcp_listen_fd] = TCP_LISTEN_ID;
 
     LOG(INFO) << "Receiver thread finish initialization";
 
     epoll_event epoll_events[MAX_EPOLL_EVENTS];
     while (!should_stop) {
+        if (peer_recv_queue) {
+            ConnectionTrait trait = {};
+            while (peer_recv_queue->try_dequeue(trait)) {
+                update_connection(trait, connections);
+            }
+        }
         rv = epoll_wait(epoll_fd, epoll_events, MAX_EPOLL_EVENTS, EPOLL_TIMEOUT);
         if (rv < 0) {
             LOG(ERROR) << "Epoll error during loop";
@@ -251,19 +287,19 @@ void Receiver::main_loop() {
         int events_len = rv;
         for (int i = 0; i < events_len; i++) {
             int cur_fd = epoll_events[i].data.fd;
-            if (!fd_map.count(cur_fd)) {
+            if (!connections.count(cur_fd)) {
                 LOG(ERROR) << "A fd not present in fd_map. This should never happen";
                 continue;
             }
 
-            uint64_t cur_id = fd_map[cur_fd];
+            uint64_t cur_id = connections[cur_fd];
 
             switch (cur_id) {
                 case TCP_LISTEN_ID:
-                    handle_accept(cur_fd, epoll_fd, fd_map);
+                    handle_accept(cur_fd, epoll_fd);
                     break;
                 default:
-                    handle_receive(cur_fd, cur_id, epoll_fd, fd_map, up_queue);
+                    handle_receive(cur_fd, cur_id, epoll_fd);
                     break;
             }
         }

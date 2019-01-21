@@ -12,7 +12,7 @@ using namespace ivy;
 class TestUtil : public CxxTest::TestSuite
 {
 public:
-    struct sockaddr_in addr;
+    struct sockaddr_in addr{};
     std::string addr_str;
     uint64_t id;
 
@@ -28,4 +28,8 @@ public:
         TS_ASSERT(get_type(id) == SOCK_STREAM);
         TS_ASSERT(id_to_ip_str(id) == addr_str);
     }
+    
+    void test_printable() {
+        TS_ASSERT(id_to_printable(id) == "192.168.1.2:1234");
+    };
 };
