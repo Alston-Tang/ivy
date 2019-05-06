@@ -8,7 +8,7 @@
 #include <glog/logging.h>
 #include <unordered_map>
 #include <unordered_set>
-#include "../concurrentqueue/blockingconcurrentqueue.h"
+#include <folly/MPMCQueue.h>
 #include "util.h"
 
 namespace ivy {
@@ -24,10 +24,10 @@ struct ConnectionTrait {
     uint64_t id;
 };
 
-typedef moodycamel::BlockingConcurrentQueue<ConnectionTrait> PeerSyncQueue;
+typedef folly::MPMCQueue<ConnectionTrait> PeerSyncQueue;
 typedef std::unordered_map<int, uint64_t> ConnectionsType;
 typedef std::unordered_map<uint64_t, std::unordered_set<int>> ConnectionsRevType;
-typedef moodycamel::BlockingConcurrentQueue<ivy::message::Raw> RawMessageQueue;
+typedef folly::MPMCQueue<ivy::message::Raw> RawMessageQueue;
 
 inline void update_connection(ConnectionTrait &trait, ConnectionsType &connections) {
     switch (trait.action) {

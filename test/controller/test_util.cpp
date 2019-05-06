@@ -40,4 +40,8 @@ public:
         TS_ASSERT_EQUALS(test_addr.sin_port, addr.sin_port);
         TS_ASSERT_EQUALS(test_addr.sin_family, addr.sin_family);
     };
+    
+    void test_ip_port_to_id() {
+        TS_ASSERT_EQUALS(id, ip_port_to_id("192.168.1.2", 1234, AF_INET, SOCK_STREAM));
+    }
 };

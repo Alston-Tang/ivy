@@ -4,7 +4,9 @@ set(CMAKE_CXX_STANDARD 14)
 
 find_package(glog REQUIRED)
 find_package(gflags REQUIRED)
+find_package(folly REQUIRED)
 set(GLOG glog gflags)
+set(FOLLY folly boost_system boost_regex double-conversion dl boost_program_options boost_filesystem pthread iberty)
 
 find_package(cryptopp REQUIRED)
 
@@ -30,11 +32,13 @@ target_link_libraries(server ${GLOG} crypto compact_logger)
 add_executable(controller controller/main.cpp)
 target_link_libraries(controller atomic)
 
+add_library(messages controller/messages/raw.cpp controller/messages/raw.h controller/util.h)
+
 add_library(receiver controller/receiver.cpp controller/receiver.h controller/controller.h)
+target_link_libraries(receiver ${GLOG} messages ${FOLLY})
 
 add_library(sender controller/sender.cpp controller/sender.h controller/controller.h)
-
-add_library(messages controller/messages/raw.cpp controller/messages/raw.h controller/util.h)
+target_link_libraries(sender ${GLOG} messages ${FOLLY})
 
 if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cxxtest)
     set(CXXTEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cxxtest)
@@ -57,4 +61,7 @@ if (CXXTEST_FOUND)
     target_link_libraries(test_compact_logger compact_logger)
 
     CXXTEST_ADD_TEST(test_util test_util.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/controller/test_util.cpp)
+
+    CXXTEST_ADD_TEST(test_receiver_sender test_receiver_sender.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/controller/test_receiver_sender.cpp)
+    target_link_libraries(test_receiver_sender receiver sender)
 endif ()

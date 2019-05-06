@@ -90,7 +90,7 @@ void Receiver::handle_accept(int tcp_listen_fd, int epoll_fd) {
             trait.action = ConnectionAction::ESTABLISH;
             trait.id = incoming_id;
             trait.fd = incoming_fd;
-            res = peer_send_queue->try_enqueue(trait);
+            res = peer_send_queue->write(trait);
             if (!res) {
                 LOG(WARNING) << "Cannot enqueue trait to peer_send_queue";
             }
@@ -131,7 +131,7 @@ void Receiver::handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_f
                 trait.action = ConnectionAction::CLOSE;
                 trait.fd = incoming_fd;
                 trait.id = connections[incoming_fd];
-                res = peer_send_queue->try_enqueue(trait);
+                res = peer_send_queue->write(trait);
                 if (!res) {
                     LOG(WARNING) << "Cannot enqueue trait to peer_send_queue";
                 }
@@ -146,7 +146,7 @@ void Receiver::handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_f
 
         message.length = (unsigned int) received;
         message.id = incoming_id;
-        res = up_queue->enqueue(message);
+        res = up_queue->tryWriteUntil(std::chrono::system_clock::now() + std::chrono::milliseconds(100), message);
         if (!res) {
             LOG(FATAL) << "Cannot enqueue message into shared queue";
         }
@@ -273,17 +273,17 @@ void Receiver::main_loop() {
     while (!should_stop) {
         if (peer_recv_queue) {
             ConnectionTrait trait = {};
-            while (peer_recv_queue->try_dequeue(trait)) {
+            while (peer_recv_queue->read(trait)) {
                 update_connection(trait, connections);
             }
         }
         rv = epoll_wait(epoll_fd, epoll_events, MAX_EPOLL_EVENTS, EPOLL_TIMEOUT);
+        if (rv == 0 || rv == EINTR) continue; // epoll return due to timeout
         if (rv < 0) {
             LOG(ERROR) << "Epoll error during loop";
             perror("Error: epoll");
             continue;
         }
-        if (rv == 0) continue; // epoll return due to timeout
         int events_len = rv;
         for (int i = 0; i < events_len; i++) {
             int cur_fd = epoll_events[i].data.fd;

@@ -1,6 +1,6 @@
-[submodule "concurrentqueue"]
-	path = concurrentqueue
-	url = https://github.com/cameron314/concurrentqueue
 [submodule "cxxtest"]
 	path = cxxtest
 	url = https://github.com/CxxTest/cxxtest/
+[submodule "folly"]
+	path = folly
+	url = https://github.com/facebook/folly

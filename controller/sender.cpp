@@ -11,6 +11,7 @@
 
 namespace ivy {
 
+const static int UP_QUEUE_TIMEOUT = 1000;
 
 Sender::Sender(std::shared_ptr<ivy::RawMessageQueue> up_queue,
                std::shared_ptr<ivy::PeerSyncQueue> peer_recv_queue,
@@ -57,6 +58,7 @@ bool Sender::stop() {
     LOG(INFO) << "Wait for the thread exiting";
     this->thread->join();
     delete this->thread;
+    this->thread = nullptr;
     LOG(INFO) << "Thread has stopped";
 
     return true;
@@ -68,19 +70,23 @@ void Sender::main_loop() {
 
     LOG(INFO) << "Sender thread is initializing";
     ConnectionTrait trait = {};
-    while (peer_recv_queue->try_dequeue(trait)) {
-        update_connection_rev(trait, connections);
+    if (peer_recv_queue) {
+        while (peer_recv_queue->readIfNotEmpty(trait)) {
+            update_connection_rev(trait, connections);
+        }
     }
     LOG(INFO) << "Sender thread finish initailization";
 
     while (!should_stop) {
-        while (peer_recv_queue->try_dequeue(trait)) {
-            update_connection_rev(trait, connections);
+        if (peer_recv_queue) {
+            while (peer_recv_queue->readIfNotEmpty(trait)) {
+                update_connection_rev(trait, connections);
+            }
         }
 
         ivy::message::Raw message(nullptr, 0);
 
-        res = up_queue->wait_dequeue_timed(message, UP_QUEUE_TIMEOUT);
+        res = up_queue->tryReadUntil(std::chrono::system_clock::now() + std::chrono::milliseconds(UP_QUEUE_TIMEOUT), message);
         if (!res) {
             continue;
         }
@@ -111,7 +117,7 @@ void Sender::handle_close(ivy::message::Raw &message) {
             trait.id = message.id;
             trait.fd = outgoing_fd;
 
-            res = peer_send_queue->try_enqueue(trait);
+            res = peer_send_queue->write(trait);
             if (!res) {
                 LOG(WARNING) << "Cannot enqueue trait to peer_send_queue";
             }

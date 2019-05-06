@@ -5,9 +5,9 @@
 #ifndef IVY_SENDER_H
 #define IVY_SENDER_H
 
-#include "../concurrentqueue/blockingconcurrentqueue.h"
 #include "messages/raw.h"
 #include "controller.h"
+#include <thread>
 
 namespace ivy {
 
@@ -24,8 +24,6 @@ public:
     bool stop();
 
 private:
-    const static int UP_QUEUE_TIMEOUT = 1000; //ms
-
     uint16_t port;
     std::shared_ptr<RawMessageQueue> up_queue;
     std::shared_ptr<PeerSyncQueue> peer_send_queue;

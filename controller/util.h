@@ -50,6 +50,17 @@ inline uint64_t tuple_to_id(sockaddr_in &addr, uint8_t proto, uint8_t type) {
             | ntohl(addr.sin_addr.s_addr));
 }
 
+inline uint64_t ip_port_to_id(const std::string &ip, unsigned short port, uint8_t proto, uint8_t type) {
+    in_addr addr = {};
+    if (inet_aton(ip.c_str(), &addr) == 0) {
+        return 0;
+    }
+    return ((uint64_t)proto << 56
+            | (uint64_t)type << 48
+            | ((uint64_t)port) << 32
+            | ntohl(addr.s_addr));
+}
+
 inline static std::string id_to_ip_str(uint64_t id) {
     in_addr addr{};
     addr.s_addr = htonl(get_addr(id));

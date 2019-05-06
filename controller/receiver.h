@@ -9,9 +9,9 @@
 #include <atomic>
 #include <unordered_map>
 
-#include "../concurrentqueue/blockingconcurrentqueue.h"
 #include "messages/raw.h"
 #include "controller.h"
+#include <thread>
 
 namespace ivy {
 
