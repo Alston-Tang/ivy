@@ -8,7 +8,7 @@
 
 #include "../controller/receiver.h"
 #include "../controller/sender.h"
-#include "../controller/util.h"
+#include "../../controller/util/ip_id.h"
 
 
 using namespace ivy;
@@ -22,6 +22,9 @@ public:
     shared_ptr<RawMessageQueue> recv_queue;
     shared_ptr<RawMessageQueue> send_queue;
 
+    const static short TEST_PORT = 1568;
+    const static short TEST_REUSEADDR_PORT = 3152;
+
     explicit TestBasic() {
         recv_queue = make_shared<RawMessageQueue>(100);
         send_queue = make_shared<RawMessageQueue>(100);
@@ -30,31 +33,34 @@ public:
     }
 
     void test_instantiate() {
-        receiver = new Receiver(recv_queue, 1314);
-        sender = new Sender(send_queue);
+        TS_ASSERT_THROWS_NOTHING(receiver = new Receiver(recv_queue, TEST_PORT););
+        TS_ASSERT_THROWS_NOTHING(sender = new Sender(send_queue););
     }
 
 
-    void disable_test_receiver_start_stop() {
-        receiver->run();
-        sleep(5);
-        receiver->stop();
+    void test_receiver_start_stop() {
+        TS_ASSERT_EQUALS(receiver->run(), true);
+        sleep(1);
+        TS_ASSERT_EQUALS(receiver->is_running(), true);
+        TS_ASSERT_EQUALS(receiver->stop(), true);
+        sleep(1);
+        TS_ASSERT_EQUALS(receiver->is_running(), false);
     }
 
-    void disable_test_sender_start_stop() {
-        sender->run();
-        sleep(5);
-        sender->stop();
+    void test_sender_start_stop() {
+        TS_ASSERT_EQUALS(sender->run(), true);
+        sleep(1);
+        TS_ASSERT_EQUALS(sender->stop(), true);
     }
 
     void test_sender_connect_to_receiver() {
         receiver->run();
         sender->run();
-        sleep(5);
+        sleep(1);
 
         char *hello_data = new char[6];
         memcpy(hello_data, "HELLO", 6);
-        message::Raw hello_msg((uint8_t*)hello_data, ip_port_to_id("127.0.0.1", 1314, AF_INET, SOCK_STREAM));
+        message::Raw hello_msg((uint8_t*)hello_data, ip_port_to_id("127.0.0.1", TEST_PORT, AF_INET, SOCK_STREAM));
         hello_msg.length = 6;
         send_queue->blockingWrite(hello_msg);
         int recv_count = 0;
@@ -66,9 +72,30 @@ public:
             recv_count += recv_msg.length;
             uint8_t* recv_data_ptr = recv_msg.data.get();
             for (int i = 0; i < recv_msg.length; i++) {
-                recv_data += (char)recv_data_ptr[i];
+                if (recv_data_ptr[i] != 0) {
+                    recv_data += (char) recv_data_ptr[i];
+                }
             }
         }
+
+        TS_ASSERT_EQUALS(recv_count, 6);
+        TS_ASSERT_EQUALS(recv_data, "HELLO");
     };
+
+    void test_reuseaddr() {
+        Receiver *receiver = new Receiver(recv_queue, TEST_REUSEADDR_PORT);
+        receiver->run();
+        sleep(1);
+        TS_ASSERT_EQUALS(receiver->is_running(), true);
+        receiver->stop();
+        delete(receiver);
+
+        receiver = new Receiver(recv_queue, TEST_REUSEADDR_PORT);
+        receiver->run();
+        sleep(1);
+        TS_ASSERT_EQUALS(receiver->is_running(), true);
+        receiver->stop();
+        delete(receiver);
+    }
 
 };

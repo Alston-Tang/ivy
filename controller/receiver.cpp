@@ -16,7 +16,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "util.h"
+#include "util/ip_id.h"
+#include "util/scope_guard.h"
 
 namespace ivy {
 
@@ -167,6 +168,7 @@ Receiver::Receiver(std::shared_ptr<RawMessageQueue> up_queue,
     this->peer_recv_queue = std::move(peer_recv_queue);
     this->peer_send_queue = std::move(peer_send_queue);
     this->should_stop = true;
+    this->running = false;
     this->thread = nullptr;
     this->port = port;
 }
@@ -208,6 +210,10 @@ bool Receiver::stop() {
     return true;
 }
 
+bool Receiver::is_running() {
+    return running;
+}
+
 void Receiver::main_loop() {
     int rv;
 
@@ -216,10 +222,35 @@ void Receiver::main_loop() {
     int tcp_listen_fd = -1;
     int epoll_fd = -1;
 
+    ScopeGuard guard([&](){
+        running = false;
+        if (tcp_listen_fd >= 0) {
+            if (close(tcp_listen_fd) != 0) {
+                LOG(ERROR) << "Cannot close socket fd " << tcp_listen_fd;
+                perror("Error: close");
+            }
+        }
+        if (epoll_fd >= 0) {
+            if (close(epoll_fd) != 0) {
+                LOG(ERROR) << "Cannot close epoll fd " << epoll_fd;
+                perror("Error: close");
+            }
+        }
+    });
+
     tcp_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (tcp_listen_fd == -1) {
         LOG(ERROR) << "Cannot open tcp socket";
         perror("Error: open");
+        return;
+    }
+
+    // Set SO_REUSEADDR
+    int opt_on = 1;
+    rv = setsockopt(tcp_listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt_on, sizeof(opt_on));
+    if (rv != 0) {
+        LOG(ERROR) << "Cannot set SO_REUSEADDR";
+        perror("Error: setsockopt");
         return;
     }
 
@@ -271,6 +302,7 @@ void Receiver::main_loop() {
 
     epoll_event epoll_events[MAX_EPOLL_EVENTS];
     while (!should_stop) {
+        running = true;
         if (peer_recv_queue) {
             ConnectionTrait trait = {};
             while (peer_recv_queue->read(trait)) {
@@ -304,19 +336,8 @@ void Receiver::main_loop() {
             }
         }
     }
-
     LOG(INFO) << "Receiver thread is doing cleaning";
-
-    rv = close(epoll_fd);
-    if (rv != 0) {
-        LOG(ERROR) << "Cannot close epoll fd";
-        perror("Error: close");
-    }
-    rv = close(tcp_listen_fd);
-    if (rv != 0) {
-        LOG(ERROR) << "Cannot close tcp listen fd";
-        perror("Error: close");
-    }
+    // Scope guard will do cleaning after execution goes out of this scope
 }
 
 }

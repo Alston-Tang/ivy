@@ -23,10 +23,13 @@ public:
             uint16_t port,
             std::shared_ptr<PeerSyncQueue> peer_recv_queue = nullptr,
             std::shared_ptr<PeerSyncQueue> peer_send_queue = nullptr);
+    ~Receiver() {}
 
     bool run();
 
     bool stop();
+
+    bool is_running();
 
     const static int RECV_BUFFER_LEN = 1500;
 
@@ -41,6 +44,7 @@ private:
     std::shared_ptr<PeerSyncQueue> peer_recv_queue;
     std::thread *thread;
     std::atomic<bool> should_stop;
+    std::atomic<bool> running;
     ConnectionsType connections;
 
     void main_loop();

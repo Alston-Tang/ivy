@@ -5,7 +5,7 @@
 #include <cxxtest/TestSuite.h>
 #include <arpa/inet.h>
 
-#include "../../controller/util.h"
+#include "../../../controller/util/ip_id.h"
 
 using namespace ivy;
 

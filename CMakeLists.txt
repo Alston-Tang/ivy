@@ -32,13 +32,15 @@ target_link_libraries(server ${GLOG} crypto compact_logger)
 add_executable(controller controller/main.cpp)
 target_link_libraries(controller atomic)
 
-add_library(messages controller/messages/raw.cpp controller/messages/raw.h controller/util.h)
+add_library(messages controller/messages/raw.cpp controller/messages/raw.h controller/util/ip_id.h)
 
 add_library(receiver controller/receiver.cpp controller/receiver.h controller/controller.h)
-target_link_libraries(receiver ${GLOG} messages ${FOLLY})
+target_link_libraries(receiver ${GLOG} messages ${FOLLY} scope_guard)
 
 add_library(sender controller/sender.cpp controller/sender.h controller/controller.h)
-target_link_libraries(sender ${GLOG} messages ${FOLLY})
+target_link_libraries(sender ${GLOG} messages ${FOLLY} scope_guard)
+
+add_library(scope_guard controller/util/scope_guard.cpp controller/util/scope_guard.h)
 
 if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cxxtest)
     set(CXXTEST_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cxxtest)
@@ -60,8 +62,11 @@ if (CXXTEST_FOUND)
     CXXTEST_ADD_TEST(test_compact_logger test_compact_logger.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/server/test_compact_logger.cpp)
     target_link_libraries(test_compact_logger compact_logger)
 
-    CXXTEST_ADD_TEST(test_util test_util.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/controller/test_util.cpp)
+    CXXTEST_ADD_TEST(test_ip_id test_ip_id.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/controller/util/test_ip_id.cpp)
 
     CXXTEST_ADD_TEST(test_receiver_sender test_receiver_sender.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/controller/test_receiver_sender.cpp)
     target_link_libraries(test_receiver_sender receiver sender)
+
+    CXXTEST_ADD_TEST(test_scope_guard test_scope_guard.gen.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/controller/util/test_scope_guard.cpp)
+    target_link_libraries(test_scope_guard scope_guard)
 endif ()

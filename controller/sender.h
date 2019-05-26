@@ -18,6 +18,7 @@ public:
             std::shared_ptr<RawMessageQueue> up_queue,
             std::shared_ptr<PeerSyncQueue> peer_recv_queue = nullptr,
             std::shared_ptr<PeerSyncQueue> peer_send_queue = nullptr);
+    ~Sender();
 
     bool run();
 

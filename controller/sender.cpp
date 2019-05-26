@@ -7,7 +7,7 @@
 #include <glog/logging.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include "util.h"
+#include "util/ip_id.h"
 
 namespace ivy {
 
@@ -26,6 +26,8 @@ Sender::Sender(std::shared_ptr<ivy::RawMessageQueue> up_queue,
     this->should_stop = true;
     this->thread = nullptr;
 }
+
+Sender::~Sender() {}
 
 bool Sender::run() {
     LOG(INFO) << "Try to run sender thread";
