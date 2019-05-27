@@ -4,7 +4,7 @@
 // Created by tang on 1/4/19.
 //
 
-#include "receiver.h"
+#include "tcp_receiver.h"
 
 #include <glog/logging.h>
 #include <unordered_map>
@@ -40,7 +40,7 @@ int set_socket_non_blocking(int fd) {
 }
 }
 
-void Receiver::handle_accept(ConnectionsType &connections, int tcp_listen_fd, int epoll_fd) {
+void TcpReceiver::handle_accept(ConnectionsType &connections, int tcp_listen_fd, int epoll_fd) {
     int rv;
     bool res;
     sockaddr_in incoming_addr{};
@@ -102,14 +102,14 @@ void Receiver::handle_accept(ConnectionsType &connections, int tcp_listen_fd, in
     }
 }
 
-void Receiver::handle_receive(ConnectionsType &connections, int incoming_fd, uint64_t incoming_id, int epoll_fd) {
+void TcpReceiver::handle_receive(ConnectionsType &connections, int incoming_fd, uint64_t incoming_id, int epoll_fd) {
     int rv;
     bool res;
 
     while (true) {
-        ivy::message::Raw message(new uint8_t[Receiver::RECV_BUFFER_LEN], 0);
+        ivy::message::Raw message(new uint8_t[TcpReceiver::RECV_BUFFER_LEN], 0);
 
-        ssize_t received = recv(incoming_fd, message.data.get(), Receiver::RECV_BUFFER_LEN, 0);
+        ssize_t received = recv(incoming_fd, message.data.get(), TcpReceiver::RECV_BUFFER_LEN, 0);
         if (received < 0) {
             if (errno == EWOULDBLOCK || errno == EAGAIN) {
                 break;
@@ -152,11 +152,11 @@ void Receiver::handle_receive(ConnectionsType &connections, int incoming_fd, uin
             LOG(FATAL) << "Cannot enqueue message into shared queue";
         }
 
-        if (received < Receiver::RECV_BUFFER_LEN) break;
+        if (received < TcpReceiver::RECV_BUFFER_LEN) break;
     }
 }
 
-Receiver::Receiver(std::shared_ptr<RawMessageQueue> up_queue,
+TcpReceiver::TcpReceiver(std::shared_ptr<RawMessageQueue> up_queue,
                    uint16_t port,
                    std::shared_ptr<PeerSyncQueue> peer_recv_queue,
                    std::shared_ptr<PeerSyncQueue> peer_send_queue) {
@@ -173,12 +173,12 @@ Receiver::Receiver(std::shared_ptr<RawMessageQueue> up_queue,
     this->port = port;
 }
 
-Receiver::~Receiver() {
+TcpReceiver::~TcpReceiver() {
     stop();
 }
 
-bool Receiver::run() {
-    LOG(INFO) << "Try to run receiver thread";
+bool TcpReceiver::run() {
+    LOG(INFO) << "Try to run TcpReceiver thread";
     if (!this->should_stop) {
         LOG(WARNING) << "Thread is running as should_stop == false";
         return false;
@@ -189,13 +189,13 @@ bool Receiver::run() {
         return false;
     }
     this->thread = new std::thread([this] { this->main_loop(); });
-    LOG(INFO) << "Receiver thread is running";
+    LOG(INFO) << "TcpReceiver thread is running";
 
     return true;
 }
 
-bool Receiver::stop() {
-    LOG(INFO) << "Try to stop receiver thread";
+bool TcpReceiver::stop() {
+    LOG(INFO) << "Try to stop TcpReceiver thread";
     if (this->should_stop) {
         LOG(WARNING) << "Thread is stopping as should_stop == true";
         return false;
@@ -214,14 +214,14 @@ bool Receiver::stop() {
     return true;
 }
 
-bool Receiver::is_running() {
+bool TcpReceiver::is_running() {
     return running;
 }
 
-void Receiver::main_loop() {
+void TcpReceiver::main_loop() {
     int rv;
 
-    LOG(INFO) << "Receiver thread is initializing";
+    LOG(INFO) << "TcpReceiver thread is initializing";
 
     int tcp_listen_fd = -1;
     int epoll_fd = -1;
@@ -252,6 +252,8 @@ void Receiver::main_loop() {
         perror("Error: open");
         return;
     }
+
+    connections[tcp_listen_fd] = TCP_LISTEN_ID;
 
     // Set SO_REUSEADDR
     int opt_on = 1;
@@ -304,9 +306,7 @@ void Receiver::main_loop() {
         return;
     }
 
-    connections[tcp_listen_fd] = TCP_LISTEN_ID;
-
-    LOG(INFO) << "Receiver thread finish initialization";
+    LOG(INFO) << "TcpReceiver thread finish initialization";
 
     epoll_event epoll_events[MAX_EPOLL_EVENTS];
     while (!should_stop) {
@@ -344,7 +344,7 @@ void Receiver::main_loop() {
             }
         }
     }
-    LOG(INFO) << "Receiver thread is doing cleaning";
+    LOG(INFO) << "TcpReceiver thread is doing cleaning";
     // Scope guard will do cleaning after execution goes out of this scope
 }
 

@@ -2,8 +2,8 @@
 // Created by tang on 1/4/19.
 //
 
-#ifndef IVY_RECEIVER_H
-#define IVY_RECEIVER_H
+#ifndef IVY_TCP_RECEIVER_H
+#define IVY_TCP_RECEIVER_H
 
 #include <memory>
 #include <atomic>
@@ -15,15 +15,15 @@
 
 namespace ivy {
 
-class Receiver {
+class TcpReceiver {
 
 public:
-    explicit Receiver(
+    explicit TcpReceiver(
             std::shared_ptr<RawMessageQueue> up_queue,
             uint16_t port,
             std::shared_ptr<PeerSyncQueue> peer_recv_queue = nullptr,
             std::shared_ptr<PeerSyncQueue> peer_send_queue = nullptr);
-    ~Receiver();
+    ~TcpReceiver();
 
     bool run();
 
@@ -56,4 +56,4 @@ private:
 }
 
 
-#endif //IVY_RECEIVER_H
+#endif //IVY_TCP_RECEIVER_H

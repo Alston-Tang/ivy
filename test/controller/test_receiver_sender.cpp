@@ -6,7 +6,7 @@
 #include <memory>
 #include <iostream>
 
-#include "../controller/receiver.h"
+#include "../../controller/tcp_receiver.h"
 #include "../controller/sender.h"
 #include "../../controller/util/ip_id.h"
 
@@ -17,7 +17,7 @@ using namespace std;
 class TestBasic : public CxxTest::TestSuite
 {
 public:
-    Receiver *receiver;
+    TcpReceiver *tcp_receiver;
     Sender *sender;
     shared_ptr<RawMessageQueue> recv_queue;
     shared_ptr<RawMessageQueue> send_queue;
@@ -28,23 +28,23 @@ public:
     explicit TestBasic() {
         recv_queue = make_shared<RawMessageQueue>(100);
         send_queue = make_shared<RawMessageQueue>(100);
-        receiver = nullptr;
+        tcp_receiver = nullptr;
         sender = nullptr;
     }
 
     void test_instantiate() {
-        TS_ASSERT_THROWS_NOTHING(receiver = new Receiver(recv_queue, TEST_PORT););
+        TS_ASSERT_THROWS_NOTHING(tcp_receiver = new TcpReceiver(recv_queue, TEST_PORT););
         TS_ASSERT_THROWS_NOTHING(sender = new Sender(send_queue););
     }
 
 
-    void test_receiver_start_stop() {
-        TS_ASSERT_EQUALS(receiver->run(), true);
+    void test_tcp_receiver_start_stop() {
+        TS_ASSERT_EQUALS(tcp_receiver->run(), true);
         sleep(1);
-        TS_ASSERT_EQUALS(receiver->is_running(), true);
-        TS_ASSERT_EQUALS(receiver->stop(), true);
+        TS_ASSERT_EQUALS(tcp_receiver->is_running(), true);
+        TS_ASSERT_EQUALS(tcp_receiver->stop(), true);
         sleep(1);
-        TS_ASSERT_EQUALS(receiver->is_running(), false);
+        TS_ASSERT_EQUALS(tcp_receiver->is_running(), false);
     }
 
     void test_sender_start_stop() {
@@ -56,8 +56,8 @@ public:
         TS_ASSERT_EQUALS(sender->is_running(), false);
     }
 
-    void test_sender_connect_to_receiver() {
-        receiver->run();
+    void test_sender_connect_to_tcp_receiver() {
+        tcp_receiver->run();
         sender->run();
         sleep(1);
 
@@ -86,19 +86,19 @@ public:
     };
 
     void test_reuseaddr() {
-        Receiver *receiver = new Receiver(recv_queue, TEST_REUSEADDR_PORT);
-        receiver->run();
+        TcpReceiver *tcp_receiver = new TcpReceiver(recv_queue, TEST_REUSEADDR_PORT);
+        tcp_receiver->run();
         sleep(1);
-        TS_ASSERT_EQUALS(receiver->is_running(), true);
-        receiver->stop();
-        delete(receiver);
+        TS_ASSERT_EQUALS(tcp_receiver->is_running(), true);
+        tcp_receiver->stop();
+        delete(tcp_receiver);
 
-        receiver = new Receiver(recv_queue, TEST_REUSEADDR_PORT);
-        receiver->run();
+        tcp_receiver = new TcpReceiver(recv_queue, TEST_REUSEADDR_PORT);
+        tcp_receiver->run();
         sleep(1);
-        TS_ASSERT_EQUALS(receiver->is_running(), true);
-        receiver->stop();
-        delete(receiver);
+        TS_ASSERT_EQUALS(tcp_receiver->is_running(), true);
+        tcp_receiver->stop();
+        delete(tcp_receiver);
     }
 
 };

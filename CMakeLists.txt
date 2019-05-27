@@ -34,7 +34,7 @@ target_link_libraries(controller atomic)
 
 add_library(messages controller/messages/raw.cpp controller/messages/raw.h controller/util/ip_id.h)
 
-add_library(receiver controller/receiver.cpp controller/receiver.h controller/controller.h)
+add_library(receiver controller/tcp_receiver.cpp controller/tcp_receiver.h controller/controller.h)
 target_link_libraries(receiver ${GLOG} messages ${FOLLY} scope_guard)
 
 add_library(sender controller/sender.cpp controller/sender.h controller/controller.h)
