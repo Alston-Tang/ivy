@@ -5,13 +5,15 @@
 #ifndef IVY_TCP_RECEIVER_H
 #define IVY_TCP_RECEIVER_H
 
-#include <memory>
 #include <atomic>
+#include <memory>
+#include <thread>
 #include <unordered_map>
 
-#include "messages/raw.h"
 #include "controller.h"
-#include <thread>
+#include "messages/raw.h"
+
+
 
 namespace ivy {
 
@@ -31,13 +33,9 @@ public:
 
     bool is_running();
 
-    const static int RECV_BUFFER_LEN = 1500;
+    const static int RECV_BUFFER_LEN = 65536;
 
 private:
-    const static int MAX_PENDING_LISTEN = 10;
-    const static int MAX_EPOLL_EVENTS = 20;
-    const static int EPOLL_TIMEOUT = 1000; //ms
-
     uint16_t port;
     std::shared_ptr<RawMessageQueue> up_queue;
     std::shared_ptr<PeerSyncQueue> peer_send_queue;

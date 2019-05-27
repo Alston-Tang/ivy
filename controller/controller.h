@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <folly/MPMCQueue.h>
 #include "util/ip_id.h"
+#include "messages/raw.h"
 
 namespace ivy {
 

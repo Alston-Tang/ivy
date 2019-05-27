@@ -86,7 +86,7 @@ void Sender::main_loop() {
     ConnectionsRevType connections_rev;
 
     ScopeGuard guard([&](){
-        running = false;
+        this->running = false;
         for (auto &connection_rev : connections_rev) {
             for (auto connection_fd : connection_rev.second) {
                  if (connection_fd >= 0) {
@@ -222,7 +222,6 @@ void Sender::handle_udp_send(ConnectionsRevType &connections_rev, ivy::message::
     int outgoing_fd = *connections_rev[message.id].begin();
     auto addr = id_to_sockaddr_in(message.id);
     byte_sent = sendto(outgoing_fd, message.data.get(), message.length, 0, (sockaddr*)&addr, sizeof(addr));
-
     if (byte_sent < 0) {
         LOG(ERROR) << "Cannot send message to " << id_to_printable(message.id) << " with fd " << outgoing_fd;
         perror("Error: sendto");

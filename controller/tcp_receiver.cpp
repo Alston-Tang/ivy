@@ -21,7 +21,10 @@
 
 namespace ivy {
 
-namespace {
+const static int MAX_PENDING_LISTEN = 10;
+const static int MAX_EPOLL_EVENTS = 20;
+const static int EPOLL_TIMEOUT = 1000; //ms
+const static int UP_QUEUE_TIMEOUT = 100; //ms
 
 int set_socket_non_blocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -37,7 +40,6 @@ int set_socket_non_blocking(int fd) {
         perror("Error: fcntl");
     }
     return rv;
-}
 }
 
 void TcpReceiver::handle_accept(ConnectionsType &connections, int tcp_listen_fd, int epoll_fd) {
@@ -147,7 +149,7 @@ void TcpReceiver::handle_receive(ConnectionsType &connections, int incoming_fd, 
 
         message.length = (unsigned int) received;
         message.id = incoming_id;
-        res = up_queue->tryWriteUntil(std::chrono::system_clock::now() + std::chrono::milliseconds(100), message);
+        res = up_queue->tryWriteUntil(std::chrono::system_clock::now() + std::chrono::milliseconds(UP_QUEUE_TIMEOUT), message);
         if (!res) {
             LOG(FATAL) << "Cannot enqueue message into shared queue";
         }
@@ -202,7 +204,7 @@ bool TcpReceiver::stop() {
     }
     this->should_stop = true;
     if (!this->thread) {
-        LOG(WARNING) << "Thread doesn't exists";
+        LOG(WARNING) << "Thread doesn't exist";
         return false;
     }
     LOG(INFO) << "Wait for the thread exiting";
@@ -228,7 +230,7 @@ void TcpReceiver::main_loop() {
     ConnectionsType connections;
 
     ScopeGuard guard([&](){
-        running = false;
+        this->running = false;
         if (epoll_fd >= 0) {
             if (close(epoll_fd) != 0) {
                 LOG(ERROR) << "Cannot close epoll fd " << epoll_fd;
@@ -249,7 +251,7 @@ void TcpReceiver::main_loop() {
     tcp_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (tcp_listen_fd == -1) {
         LOG(ERROR) << "Cannot open tcp socket";
-        perror("Error: open");
+        perror("Error: socket");
         return;
     }
 
@@ -310,7 +312,7 @@ void TcpReceiver::main_loop() {
 
     epoll_event epoll_events[MAX_EPOLL_EVENTS];
     while (!should_stop) {
-        running = true;
+        this->running = true;
         if (peer_recv_queue) {
             ConnectionTrait trait = {};
             while (peer_recv_queue->read(trait)) {

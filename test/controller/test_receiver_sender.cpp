@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "../../controller/tcp_receiver.h"
+#include "../../controller/udp_receiver.h"
 #include "../controller/sender.h"
 #include "../../controller/util/ip_id.h"
 
@@ -18,9 +19,11 @@ class TestBasic : public CxxTest::TestSuite
 {
 public:
     TcpReceiver *tcp_receiver;
+    UdpReceiver *udp_receiver;
     Sender *sender;
     shared_ptr<RawMessageQueue> recv_queue;
     shared_ptr<RawMessageQueue> send_queue;
+    shared_ptr<RawMessageQueue> udp_recv_queue;
 
     const static short TEST_PORT = 1568;
     const static short TEST_REUSEADDR_PORT = 3152;
@@ -28,13 +31,16 @@ public:
     explicit TestBasic() {
         recv_queue = make_shared<RawMessageQueue>(100);
         send_queue = make_shared<RawMessageQueue>(100);
+        udp_recv_queue = make_shared<RawMessageQueue>(100);
         tcp_receiver = nullptr;
+        udp_receiver = nullptr;
         sender = nullptr;
     }
 
     void test_instantiate() {
         TS_ASSERT_THROWS_NOTHING(tcp_receiver = new TcpReceiver(recv_queue, TEST_PORT););
         TS_ASSERT_THROWS_NOTHING(sender = new Sender(send_queue););
+        TS_ASSERT_THROWS_NOTHING(udp_receiver = new UdpReceiver(udp_recv_queue,TEST_PORT));
     }
 
 
@@ -45,6 +51,15 @@ public:
         TS_ASSERT_EQUALS(tcp_receiver->stop(), true);
         sleep(1);
         TS_ASSERT_EQUALS(tcp_receiver->is_running(), false);
+    }
+
+    void test_udp_receiver_start_stop() {
+        TS_ASSERT_EQUALS(udp_receiver->run(), true);
+        sleep(1);
+        TS_ASSERT_EQUALS(udp_receiver->is_running(), true);
+        TS_ASSERT_EQUALS(udp_receiver->stop(), true);
+        sleep(1);
+        TS_ASSERT_EQUALS(udp_receiver->is_running(), false);
     }
 
     void test_sender_start_stop() {
@@ -83,7 +98,42 @@ public:
 
         TS_ASSERT_EQUALS(recv_count, 6);
         TS_ASSERT_EQUALS(recv_data, "HELLO");
+        delete[] hello_data;
+        tcp_receiver->stop();
+        sender->stop();
     };
+
+    void test_sender_connect_to_udp_receiver() {
+        udp_receiver->run();
+        sender->run();
+        sleep(1);
+
+        char *hello_data = new char[6];
+        memcpy(hello_data, "HELLO", 6);
+        message::Raw hello_msg((uint8_t*)hello_data, ip_port_to_id("127.0.0.1", TEST_PORT, AF_INET, SOCK_DGRAM));
+        hello_msg.length = 6;
+        send_queue->blockingWrite(hello_msg);
+        int recv_count = 0;
+        message::Raw recv_msg(nullptr, 0);
+        recv_msg.length = 0;
+        string recv_data;
+        while (recv_count < 6) {
+            udp_recv_queue->blockingRead(recv_msg);
+            recv_count += recv_msg.length;
+            uint8_t* recv_data_ptr = recv_msg.data.get();
+            for (int i = 0; i < recv_msg.length; i++) {
+                if (recv_data_ptr[i] != 0) {
+                    recv_data += (char) recv_data_ptr[i];
+                }
+            }
+        }
+
+        TS_ASSERT_EQUALS(recv_count, 6);
+        TS_ASSERT_EQUALS(recv_data, "HELLO");
+        delete[] hello_data;
+        udp_receiver->stop();
+        sender->stop();
+    }
 
     void test_reuseaddr() {
         TcpReceiver *tcp_receiver = new TcpReceiver(recv_queue, TEST_REUSEADDR_PORT);
