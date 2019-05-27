@@ -50,7 +50,10 @@ public:
     void test_sender_start_stop() {
         TS_ASSERT_EQUALS(sender->run(), true);
         sleep(1);
+        TS_ASSERT_EQUALS(sender->is_running(), true);
         TS_ASSERT_EQUALS(sender->stop(), true);
+        sleep(1);
+        TS_ASSERT_EQUALS(sender->is_running(), false);
     }
 
     void test_sender_connect_to_receiver() {

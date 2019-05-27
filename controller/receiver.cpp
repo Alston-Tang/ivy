@@ -40,7 +40,7 @@ int set_socket_non_blocking(int fd) {
 }
 }
 
-void Receiver::handle_accept(int tcp_listen_fd, int epoll_fd) {
+void Receiver::handle_accept(ConnectionsType &connections, int tcp_listen_fd, int epoll_fd) {
     int rv;
     bool res;
     sockaddr_in incoming_addr{};
@@ -102,7 +102,7 @@ void Receiver::handle_accept(int tcp_listen_fd, int epoll_fd) {
     }
 }
 
-void Receiver::handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_fd) {
+void Receiver::handle_receive(ConnectionsType &connections, int incoming_fd, uint64_t incoming_id, int epoll_fd) {
     int rv;
     bool res;
 
@@ -173,6 +173,10 @@ Receiver::Receiver(std::shared_ptr<RawMessageQueue> up_queue,
     this->port = port;
 }
 
+Receiver::~Receiver() {
+    stop();
+}
+
 bool Receiver::run() {
     LOG(INFO) << "Try to run receiver thread";
     if (!this->should_stop) {
@@ -221,19 +225,23 @@ void Receiver::main_loop() {
 
     int tcp_listen_fd = -1;
     int epoll_fd = -1;
+    ConnectionsType connections;
 
     ScopeGuard guard([&](){
         running = false;
-        if (tcp_listen_fd >= 0) {
-            if (close(tcp_listen_fd) != 0) {
-                LOG(ERROR) << "Cannot close socket fd " << tcp_listen_fd;
-                perror("Error: close");
-            }
-        }
         if (epoll_fd >= 0) {
             if (close(epoll_fd) != 0) {
                 LOG(ERROR) << "Cannot close epoll fd " << epoll_fd;
                 perror("Error: close");
+            }
+        }
+        for (auto &connection : connections) {
+            int connection_fd = connection.first;
+            if (connection_fd >= 0) {
+                if (close(connection_fd) != 0) {
+                    LOG(ERROR) << "Cannot close connection fd " << connection_fd;
+                    perror("Error: close");
+                }
             }
         }
     });
@@ -328,10 +336,10 @@ void Receiver::main_loop() {
 
             switch (cur_id) {
                 case TCP_LISTEN_ID:
-                    handle_accept(cur_fd, epoll_fd);
+                    handle_accept(connections, cur_fd, epoll_fd);
                     break;
                 default:
-                    handle_receive(cur_fd, cur_id, epoll_fd);
+                    handle_receive(connections, cur_fd, cur_id, epoll_fd);
                     break;
             }
         }

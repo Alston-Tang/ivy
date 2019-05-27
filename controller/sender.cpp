@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include "util/ip_id.h"
+#include "util/scope_guard.h"
 
 namespace ivy {
 
@@ -24,10 +25,14 @@ Sender::Sender(std::shared_ptr<ivy::RawMessageQueue> up_queue,
     this->peer_recv_queue = std::move(peer_recv_queue);
     this->peer_send_queue = std::move(peer_send_queue);
     this->should_stop = true;
+    this->running = false;
     this->thread = nullptr;
+
 }
 
-Sender::~Sender() {}
+Sender::~Sender() {
+    stop();
+}
 
 bool Sender::run() {
     LOG(INFO) << "Try to run sender thread";
@@ -66,23 +71,46 @@ bool Sender::stop() {
     return true;
 }
 
+bool Sender::is_running() {
+    return running;
+}
+
 void Sender::main_loop() {
     bool res;
     int rv;
 
+
     LOG(INFO) << "Sender thread is initializing";
+
     ConnectionTrait trait = {};
+    ConnectionsRevType connections_rev;
+
+    ScopeGuard guard([&](){
+        running = false;
+        for (auto &connection_rev : connections_rev) {
+            for (auto connection_fd : connection_rev.second) {
+                 if (connection_fd >= 0) {
+                     if (close(connection_fd) != 0) {
+                         LOG(ERROR) << "Cannot close connection fd " << connection_fd;
+                         perror("Error: close");
+                     }
+                 }
+            }
+        }
+    });
+
     if (peer_recv_queue) {
         while (peer_recv_queue->readIfNotEmpty(trait)) {
-            update_connection_rev(trait, connections);
+            update_connection_rev(trait, connections_rev);
         }
     }
     LOG(INFO) << "Sender thread finish initailization";
 
     while (!should_stop) {
+        running = true;
         if (peer_recv_queue) {
             while (peer_recv_queue->readIfNotEmpty(trait)) {
-                update_connection_rev(trait, connections);
+                update_connection_rev(trait, connections_rev);
             }
         }
 
@@ -94,19 +122,19 @@ void Sender::main_loop() {
         }
 
         if (message.length > 0) {
-            handle_send(message);
+            handle_send(connections_rev, message);
         } else if (message.length == 0) {
-            handle_close(message);
+            handle_close(connections_rev, message);
         }
     }
 }
 
-void Sender::handle_close(ivy::message::Raw &message) {
+void Sender::handle_close(ConnectionsRevType &connections_rev, ivy::message::Raw &message) {
     int rv;
     bool res;
     std::vector<int> fds_closed;
     ConnectionTrait trait = {};
-    for (int outgoing_fd : connections[message.id]) {
+    for (int outgoing_fd : connections_rev[message.id]) {
         rv = close(outgoing_fd);
         if (rv != 0) {
             LOG(ERROR) << "Cannot close fd " << outgoing_fd << " connected to " << id_to_printable(message.id);
@@ -126,26 +154,26 @@ void Sender::handle_close(ivy::message::Raw &message) {
         }
     }
     for (int fd_closed : fds_closed) {
-        connections[message.id].erase(fd_closed);
+        connections_rev[message.id].erase(fd_closed);
     }
 }
 
-void Sender::handle_send(ivy::message::Raw &message) {
+void Sender::handle_send(ConnectionsRevType &connections_rev, ivy::message::Raw &message) {
     switch (get_type(message.id)) {
         case SOCK_STREAM:
-            return handle_tcp_send(message);
+            return handle_tcp_send(connections_rev, message);
         case SOCK_DGRAM:
-            return handle_udp_send(message);
+            return handle_udp_send(connections_rev, message);
         default:
             LOG(ERROR) << "Unsupported network type";
             return;
     }
 }
 
-void Sender::handle_tcp_send(ivy::message::Raw &message) {
+void Sender::handle_tcp_send(ConnectionsRevType &connections_rev, ivy::message::Raw &message) {
     ssize_t byte_sent;
     int rv;
-    if (!connections.count(message.id) || connections[message.id].empty()) {
+    if (!connections_rev.count(message.id) || connections_rev[message.id].empty()) {
         int new_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (new_fd == -1) {
             LOG(ERROR) << "Cannot create new tcp socket. Ignore sending to " << id_to_printable(message.id);
@@ -161,10 +189,10 @@ void Sender::handle_tcp_send(ivy::message::Raw &message) {
             return;
         }
 
-        connections[message.id].insert(new_fd);
+        connections_rev[message.id].insert(new_fd);
     }
 
-    int outgoing_fd = *connections[message.id].begin();
+    int outgoing_fd = *connections_rev[message.id].begin();
     byte_sent = send(outgoing_fd, message.data.get(), message.length, 0);
     if (byte_sent < 0) {
         LOG(ERROR) << "Cannot send message to " << id_to_printable(message.id) << " with fd " << outgoing_fd;
@@ -178,20 +206,20 @@ void Sender::handle_tcp_send(ivy::message::Raw &message) {
     }
 };
 
-void Sender::handle_udp_send(ivy::message::Raw &message) {
+void Sender::handle_udp_send(ConnectionsRevType &connections_rev, ivy::message::Raw &message) {
     ssize_t byte_sent;
     int rv;
-    if (!connections.count(message.id) || connections[message.id].empty()) {
+    if (!connections_rev.count(message.id) || connections_rev[message.id].empty()) {
         int new_fd = socket(AF_INET, SOCK_DGRAM, 0);
         if (new_fd == -1) {
             LOG(ERROR) << "Cannot create new udp socket. Ignore sending to " << id_to_printable(message.id);
             perror("Error: socket");
             return;
         }
-        connections[message.id].insert(new_fd);
+        connections_rev[message.id].insert(new_fd);
     }
 
-    int outgoing_fd = *connections[message.id].begin();
+    int outgoing_fd = *connections_rev[message.id].begin();
     auto addr = id_to_sockaddr_in(message.id);
     byte_sent = sendto(outgoing_fd, message.data.get(), message.length, 0, (sockaddr*)&addr, sizeof(addr));
 

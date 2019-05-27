@@ -24,6 +24,8 @@ public:
 
     bool stop();
 
+    bool is_running();
+
 private:
     uint16_t port;
     std::shared_ptr<RawMessageQueue> up_queue;
@@ -31,24 +33,21 @@ private:
     std::shared_ptr<PeerSyncQueue> peer_recv_queue;
     std::thread *thread;
     std::atomic<bool> should_stop;
-    ConnectionsRevType connections;
+    std::atomic<bool> running;
 
     void main_loop();
 
-    void handle_close(ivy::message::Raw &message);
+    void handle_close(ConnectionsRevType &connections_rev, ivy::message::Raw &message);
 
-    void handle_send(ivy::message::Raw &message);
+    void handle_send(ConnectionsRevType &connections_rev, ivy::message::Raw &message);
 
-    void handle_tcp_send(ivy::message::Raw &message);
+    void handle_tcp_send(ConnectionsRevType &connections_rev, ivy::message::Raw &message);
 
-    void handle_udp_send(ivy::message::Raw &message);
+    void handle_udp_send(ConnectionsRevType &connections_rev, ivy::message::Raw &message);
 };
 
 
 }
-class sender {
-
-};
 
 
 #endif //IVY_SENDER_H

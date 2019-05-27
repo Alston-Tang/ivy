@@ -23,7 +23,7 @@ public:
             uint16_t port,
             std::shared_ptr<PeerSyncQueue> peer_recv_queue = nullptr,
             std::shared_ptr<PeerSyncQueue> peer_send_queue = nullptr);
-    ~Receiver() {}
+    ~Receiver();
 
     bool run();
 
@@ -45,13 +45,12 @@ private:
     std::thread *thread;
     std::atomic<bool> should_stop;
     std::atomic<bool> running;
-    ConnectionsType connections;
 
     void main_loop();
 
-    void handle_accept(int tcp_listen_fd, int epoll_fd);
+    void handle_accept(ConnectionsType &connections, int tcp_listen_fd, int epoll_fd);
 
-    void handle_receive(int incoming_fd, uint64_t incoming_id, int epoll_fd);
+    void handle_receive(ConnectionsType &connections, int incoming_fd, uint64_t incoming_id, int epoll_fd);
 };
 
 }

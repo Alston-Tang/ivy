@@ -61,25 +61,25 @@ inline void update_connection(ConnectionTrait &trait, ConnectionsType &connectio
     }
 }
 
-inline void update_connection_rev(ConnectionTrait &trait, ConnectionsRevType &connections) {
+inline void update_connection_rev(ConnectionTrait &trait, ConnectionsRevType &connections_rev) {
     switch (trait.action) {
         case ConnectionAction::CLOSE:
-            if (!connections.count(trait.id) || !connections[trait.id].count(trait.fd)) {
+            if (!connections_rev.count(trait.id) || !connections_rev[trait.id].count(trait.fd)) {
                 LOG(WARNING) << "Ignore close action as the id " << id_to_printable(trait.id) << "and fd " << trait.fd
-                             << " not exists in local connections.";
+                             << " not exists in local connections_rev.";
                 return;
             }
-            connections[trait.id].erase(trait.fd);
+            connections_rev[trait.id].erase(trait.fd);
             LOG(INFO) << "Connection to " << id_to_printable(trait.id) << " with fd " << trait.fd
                       << " is closed according to peer's report";
             return;
         case ConnectionAction::ESTABLISH:
-            if (connections.count(trait.id) && connections[trait.id].count(trait.fd)) {
+            if (connections_rev.count(trait.id) && connections_rev[trait.id].count(trait.fd)) {
                 LOG(WARNING) << "Ignore establish action as fd " << trait.fd << " and id " << id_to_printable(trait.id)
-                             << " is already in local connections.";
+                             << " is already in local connections_rev.";
                 return;
             }
-            connections[trait.id].insert(trait.fd);
+            connections_rev[trait.id].insert(trait.fd);
             LOG(INFO) << "Connection to " << id_to_printable(trait.id) << " with fd " << trait.fd
                       << " is established according to peer report";
             return;
