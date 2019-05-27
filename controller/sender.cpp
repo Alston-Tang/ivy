@@ -27,6 +27,7 @@ Sender::Sender(std::shared_ptr<ivy::RawMessageQueue> up_queue,
     this->should_stop = true;
     this->running = false;
     this->thread = nullptr;
+    this->udp_fd = -1;
 
 }
 
@@ -87,6 +88,14 @@ void Sender::main_loop() {
 
     ScopeGuard guard([&](){
         this->running = false;
+        if (this->udp_fd >= 0) {
+            if (close(this->udp_fd) != 0) {
+                LOG(ERROR) << "Cannot close udp fd " << this->udp_fd;
+                perror("Error: udp");
+            } else {
+                this->udp_fd = -1;
+            }
+        }
         for (auto &connection_rev : connections_rev) {
             for (auto connection_fd : connection_rev.second) {
                  if (connection_fd >= 0) {
@@ -209,17 +218,16 @@ void Sender::handle_tcp_send(ConnectionsRevType &connections_rev, ivy::message::
 void Sender::handle_udp_send(ConnectionsRevType &connections_rev, ivy::message::Raw &message) {
     ssize_t byte_sent;
     int rv;
-    if (!connections_rev.count(message.id) || connections_rev[message.id].empty()) {
-        int new_fd = socket(AF_INET, SOCK_DGRAM, 0);
-        if (new_fd == -1) {
+    if (this->udp_fd < 0) {
+        this->udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+        if (this->udp_fd == -1) {
             LOG(ERROR) << "Cannot create new udp socket. Ignore sending to " << id_to_printable(message.id);
             perror("Error: socket");
             return;
         }
-        connections_rev[message.id].insert(new_fd);
     }
 
-    int outgoing_fd = *connections_rev[message.id].begin();
+    int outgoing_fd = this->udp_fd;
     auto addr = id_to_sockaddr_in(message.id);
     byte_sent = sendto(outgoing_fd, message.data.get(), message.length, 0, (sockaddr*)&addr, sizeof(addr));
     if (byte_sent < 0) {

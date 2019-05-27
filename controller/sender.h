@@ -35,6 +35,10 @@ private:
     std::atomic<bool> should_stop;
     std::atomic<bool> running;
 
+    // Use a single udp socket to handle all udp sending
+    // This socket will be only alive inside main_loop()
+    int udp_fd;
+
     void main_loop();
 
     void handle_close(ConnectionsRevType &connections_rev, ivy::message::Raw &message);
